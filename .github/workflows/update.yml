@@ -1,33 +1,32 @@
-name: Update FII DII Data
+name: update
 
 on:
   schedule:
-    - cron: "0 13 * * *"   # runs daily at 6:30 PM IST
+    - cron: "0 12 * * *"
   workflow_dispatch:
 
 jobs:
   update:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
 
-      - name: Set up Python
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
-      - name: Install dependencies
-        run: |
-          pip install requests pandas
+      - name: Install deps
+        run: pip install requests pandas beautifulsoup4
 
-      - name: Run fetcher script
-        run: python scripts/fetch_nse_fii_dii.py
+      - name: Fetch Moneycontrol FII/DII data
+        run: python scripts/fetch_moneycontrol_fii_dii.py
 
-      - name: Commit updates
+      - name: Commit & Push
         run: |
           git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add data/fii_dii.csv
-          git commit -m "Auto-update FII/DII data" || echo "No changes"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "Updated FII/DII data" || echo "No changes"
           git push
