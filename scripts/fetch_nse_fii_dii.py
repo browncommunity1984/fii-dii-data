@@ -1,82 +1,77 @@
 import requests
 import csv
-import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 CSV_PATH = "data/fii_dii.csv"
 
-URL = "https://www.nseindia.com/api/fiidiiDashboard"
-
+# NSE headers (important)
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
-    "Accept": "application/json",
     "Referer": "https://www.nseindia.com/"
 }
 
-def fetch_data():
+def fetch_data_for_date(date_str):
+    """Fetch FII/DII cash market data for a specific date."""
+    url = f"https://www.nseindia.com/api/market-data-pre-open?key=fiiDiiCash&date={date_str}"
+
     try:
-        session = requests.Session()
-        session.get("https://www.nseindia.com/", headers=HEADERS)
+        resp = requests.get(url, headers=HEADERS, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
 
-        response = session.get(URL, headers=HEADERS)
-
-        if response.status_code != 200:
-            print("Error: NSE returned", response.status_code)
+        if "data" not in data or not data["data"]:
             return None
 
-        data = response.json()
+        return data["data"][0]
 
-        # Cash Market data
-        cash = data["data"]["cash"]
-
-        if len(cash) == 0:
-            print("Error: Cash list empty")
-            return None
-
-        latest = cash[0]  # today's data
-
-        result = {
-            "date": latest["date"],
-            "fii_buy": latest["FII_BUY"],
-            "fii_sell": latest["FII_SELL"],
-            "dii_buy": latest["DII_BUY"],
-            "dii_sell": latest["DII_SELL"]
-        }
-
-        print("Fetched:", result)
-        return result
-
-    except Exception as e:
-        print("Error fetching data:", e)
+    except Exception:
         return None
 
 
-def save_to_csv(row):
-    file_exists = os.path.isfile(CSV_PATH)
+def save_to_csv(rows):
+    headers = [
+        "date", "fii_buy", "fii_sell", "fii_net",
+        "dii_buy", "dii_sell", "dii_net"
+    ]
 
-    with open(CSV_PATH, mode="a", newline="") as f:
+    with open(CSV_PATH, "w", newline="") as f:
         writer = csv.writer(f)
-
-        if not file_exists:
-            writer.writerow(["date", "fii_buy", "fii_sell", "dii_buy", "dii_sell"])
-
-        writer.writerow([
-            row["date"],
-            row["fii_buy"],
-            row["fii_sell"],
-            row["dii_buy"],
-            row["dii_sell"]
-        ])
-
-        print("Saved:", row)
+        writer.writerow(headers)
+        writer.writerows(rows)
 
 
 def main():
-    row = fetch_data()
-    if row:
-        save_to_csv(row)
+    today = datetime.now()
+    start_day = today - timedelta(days=365)
+
+    all_rows = []
+
+    print("Fetching last 365 days FII/DII data...")
+
+    for i in range(366):
+        day = start_day + timedelta(days=i)
+        date_str = day.strftime("%d-%m-%Y")
+
+        print("Checking:", date_str)
+
+        data = fetch_data_for_date(date_str)
+        if data:
+            row = [
+                date_str,
+                data.get("fiiBuyValue", 0),
+                data.get("fiiSellValue", 0),
+                data.get("fiiNetValue", 0),
+                data.get("diiBuyValue", 0),
+                data.get("diiSellValue", 0),
+                data.get("diiNetValue", 0),
+            ]
+            all_rows.append(row)
+
+    if all_rows:
+        save_to_csv(all_rows)
+        print("Saved", len(all_rows), "days of data to CSV.")
     else:
-        print("No data saved.")
+        print("No data fetched.")
 
 
 if __name__ == "__main__":
