@@ -5,40 +5,42 @@ from datetime import datetime
 
 CSV_PATH = "data/fii_dii.csv"
 
-NSE_URL = "https://www.nseindia.com/api/fiidiiTradeReact"
+URL = "https://www.nseindia.com/api/fiidiiDashboard"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "User-Agent": "Mozilla/5.0",
     "Accept": "application/json",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": "https://www.nseindia.com/",
-    "Connection": "keep-alive"
+    "Referer": "https://www.nseindia.com/"
 }
 
 def fetch_data():
     try:
         session = requests.Session()
-        session.get("https://www.nseindia.com/", headers=HEADERS)  # required
-        response = session.get(NSE_URL, headers=HEADERS)
+        session.get("https://www.nseindia.com/", headers=HEADERS)
+
+        response = session.get(URL, headers=HEADERS)
 
         if response.status_code != 200:
-            print("Error: NSE returned status", response.status_code)
+            print("Error: NSE returned", response.status_code)
             return None
 
         data = response.json()
 
-        if "data" not in data or len(data["data"]) == 0:
-            print("Error: No data received")
+        # Cash Market data
+        cash = data["data"]["cash"]
+
+        if len(cash) == 0:
+            print("Error: Cash list empty")
             return None
 
-        latest = data["data"][0]
+        latest = cash[0]  # today's data
 
         result = {
             "date": latest["date"],
-            "fii_buy": latest.get("FII_BUY", 0),
-            "fii_sell": latest.get("FII_SELL", 0),
-            "dii_buy": latest.get("DII_BUY", 0),
-            "dii_sell": latest.get("DII_SELL", 0)
+            "fii_buy": latest["FII_BUY"],
+            "fii_sell": latest["FII_SELL"],
+            "dii_buy": latest["DII_BUY"],
+            "dii_sell": latest["DII_SELL"]
         }
 
         print("Fetched:", result)
@@ -52,17 +54,21 @@ def fetch_data():
 def save_to_csv(row):
     file_exists = os.path.isfile(CSV_PATH)
 
-    with open(CSV_PATH, mode="a", newline="") as file:
-        writer = csv.writer(file)
+    with open(CSV_PATH, mode="a", newline="") as f:
+        writer = csv.writer(f)
 
         if not file_exists:
             writer.writerow(["date", "fii_buy", "fii_sell", "dii_buy", "dii_sell"])
 
         writer.writerow([
-            row["date"], row["fii_buy"], row["fii_sell"], row["dii_buy"], row["dii_sell"]
+            row["date"],
+            row["fii_buy"],
+            row["fii_sell"],
+            row["dii_buy"],
+            row["dii_sell"]
         ])
 
-        print("Saved row:", row)
+        print("Saved:", row)
 
 
 def main():
@@ -72,6 +78,6 @@ def main():
     else:
         print("No data saved.")
 
+
 if __name__ == "__main__":
     main()
-
