@@ -1,56 +1,38 @@
 import requests
 import pandas as pd
-from bs4 import BeautifulSoup
-from datetime import datetime
+import os
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0"
-}
+def fetch_moneycontrol_data(type_):
+    url = f"https://www.moneycontrol.com/mc/widget/marketstats/fii_dii_activity/get_data?type={type_}&duration=1M"
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
 
-def fetch_table(url, category):
-    print(f"Fetching {category} data...")
+    print(f"Fetching {type_.upper()} data...")
+    r = requests.get(url, headers=headers)
+    r.raise_for_status()
 
-    response = requests.get(url, headers=HEADERS, timeout=15)
-    soup = BeautifulSoup(response.text, "html.parser")
+    data = r.json().get("data", [])
+    return pd.DataFrame(data)
 
-    table = soup.find("table", {"class": "mctable1"})
+def main():
+    fii_df = fetch_moneycontrol_data("fii")
+    dii_df = fetch_moneycontrol_data("dii")
 
-    if table is None:
-        print(f"❌ Table not found for {category}")
-        return pd.DataFrame()
+    if fii_df.empty or dii_df.empty:
+        print("⚠ No data received!")
+        return
 
-    rows = []
-    for tr in table.find_all("tr")[1:]:
-        tds = [td.text.strip() for td in tr.find_all("td")]
-        if len(tds) < 4:
-            continue
+    # Clean + merge
+    fii_df["category"] = "FII/FPI"
+    dii_df["category"] = "DII"
+    df = pd.concat([fii_df, dii_df], ignore_index=True)
 
-        date_raw = tds[0]
-        buy = tds[1].replace(",", "")
-        sell = tds[2].replace(",", "")
-        net = tds[3].replace(",", "")
+    # Output folder
+    os.makedirs("data", exist_ok=True)
+    df.to_csv("data/fii_dii.csv", index=False)
 
-        try:
-            date_obj = datetime.strptime(date_raw, "%d-%b-%Y").date()
-        except:
-            continue
+    print(f"✅ Done. Saved {len(df)} rows to data/fii_dii.csv")
 
-        rows.append([category, date_obj, float(buy), float(sell), float(net)])
-
-    df = pd.DataFrame(rows, columns=["CATEGORY", "DATE", "BUY", "SELL", "NET"])
-    return df
-
-
-url_fii = "https://www.moneycontrol.com/stocks/marketstats/fii-dii-activity/institutional/cash/institutionType/FII"
-url_dii = "https://www.moneycontrol.com/stocks/marketstats/fii-dii-activity/institutional/cash/institutionType/DII"
-
-df_fii = fetch_table(url_fii, "FII/FPI")
-df_dii = fetch_table(url_dii, "DII")
-
-df = pd.concat([df_fii, df_dii], ignore_index=True)
-df = df.sort_values("DATE")
-
-output_path = "data/fii_dii.csv"
-df.to_csv(output_path, index=False)
-
-print(f"✅ Done. Saved {len(df)} rows to {output_path}")
+if __name__ == "__main__":
+    main()
