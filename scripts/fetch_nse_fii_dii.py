@@ -1,76 +1,77 @@
 import requests
-import pandas as pd
+import csv
+import os
 from datetime import datetime
 
-# Output file
 CSV_PATH = "data/fii_dii.csv"
 
-# NSE API endpoint for FII/DII cash market activity
-URL = "https://www.nseindia.com/api/fiidiiTradeInfo"
+NSE_URL = "https://www.nseindia.com/api/fiidiiTradeReact"
 
-# NSE requires headers
 HEADERS = {
-    "User-Agent": "Mozilla/5.0",
-    "Accept": "application/json"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "Accept": "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.nseindia.com/",
+    "Connection": "keep-alive"
 }
 
 def fetch_data():
-    session = requests.Session()
-    session.headers.update(HEADERS)
-
     try:
-        response = session.get(URL, timeout=10)
+        session = requests.Session()
+        session.get("https://www.nseindia.com/", headers=HEADERS)  # required
+        response = session.get(NSE_URL, headers=HEADERS)
+
+        if response.status_code != 200:
+            print("Error: NSE returned status", response.status_code)
+            return None
+
         data = response.json()
+
+        if "data" not in data or len(data["data"]) == 0:
+            print("Error: No data received")
+            return None
+
+        latest = data["data"][0]
+
+        result = {
+            "date": latest["date"],
+            "fii_buy": latest.get("FII_BUY", 0),
+            "fii_sell": latest.get("FII_SELL", 0),
+            "dii_buy": latest.get("DII_BUY", 0),
+            "dii_sell": latest.get("DII_SELL", 0)
+        }
+
+        print("Fetched:", result)
+        return result
+
     except Exception as e:
         print("Error fetching data:", e)
         return None
 
-    # Extract cash market data
-    cash = data.get("data", [])
 
-    if not cash:
-        print("No data received")
-        return None
+def save_to_csv(row):
+    file_exists = os.path.isfile(CSV_PATH)
 
-    latest = cash[0]  # Latest day
+    with open(CSV_PATH, mode="a", newline="") as file:
+        writer = csv.writer(file)
 
-    # Extract values
-    date_str = latest["date"]
-    fii_net = latest["fii_net"]
-    dii_net = latest["dii_net"]
+        if not file_exists:
+            writer.writerow(["date", "fii_buy", "fii_sell", "dii_buy", "dii_sell"])
 
-    # Format date to YYYY-MM-DD
-    try:
-        date_fmt = datetime.strptime(date_str, "%d-%b-%Y").strftime("%Y-%m-%d")
-    except:
-        date_fmt = date_str
+        writer.writerow([
+            row["date"], row["fii_buy"], row["fii_sell"], row["dii_buy"], row["dii_sell"]
+        ])
 
-    return {
-        "date": date_fmt,
-        "fii_net": fii_net,
-        "dii_net": dii_net
-    }
+        print("Saved row:", row)
 
-def update_csv():
-    new = fetch_data()
-    if new is None:
-        return
 
-    print("Fetched:", new)
-
-    try:
-        df = pd.read_csv(CSV_PATH)
-    except:
-        df = pd.DataFrame(columns=["date", "fii_net", "dii_net"])
-
-    # Avoid duplicates
-    if new["date"] in df["date"].values:
-        print("Already updated for today")
-        return
-
-    df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
-    df.to_csv(CSV_PATH, index=False)
-    print("CSV updated.")
+def main():
+    row = fetch_data()
+    if row:
+        save_to_csv(row)
+    else:
+        print("No data saved.")
 
 if __name__ == "__main__":
-    update_csv()
+    main()
+
